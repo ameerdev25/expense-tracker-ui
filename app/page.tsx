@@ -1,101 +1,194 @@
-import Image from "next/image";
+"use client";
+
+import ExpenseItem from '@/components/ExpenseItem';
+import AddCircleRoundedIcon from '@mui/icons-material/AddCircleRounded';
+import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Menu, MenuItem, Modal, Snackbar, TextField } from '@mui/material';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MouseEvent, useState } from 'react';
+
+interface ExpenseData {
+  id: number;
+  name: string;
+  amount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface SnackbarNotification {
+  message: string;
+  severity: 'success' | 'error';
+  open: boolean;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const [isOpenAddNew, setIsOpenAddNew] = useState(false);
+  const [newName, setNewName] = useState<string>('');
+  const [newAmount, setNewAmount] = useState<number>(0);
+  const [isShowAddNewError, setIsShowAddNewError] = useState(false);
+  const [isShowSnackbar, setIsShowSnackbar] = useState<SnackbarNotification>({message: '', severity: 'success', open: false});
+  const [expenseMenuAnchorEl, setExpenseMenuAnchorEl] = useState<null | HTMLElement>(null);
+  const [selectedId, setSelectedId] = useState<number>(0);
+  const [isShowDeleteDialog, setIsShowDeleteDialog] = useState(false);
+  const isOpenExpenseMenu = Boolean(expenseMenuAnchorEl);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const queryClient = useQueryClient();
+
+  const expenseList = useQuery({ queryKey: ['expensesData'], queryFn: () => fetch('http://localhost:3001/expense').then(res => res.json()) });
+
+  const expenseTotal = useQuery({ queryKey: ['expenseTotal'], queryFn: () => fetch('http://localhost:3001/expense/total').then(res => res.json()) });
+
+  const newExpenseMutation = useMutation({
+    mutationFn: async (newData: { name: string, amount: number }) => {
+      const response = await fetch('http://localhost:3001/expense', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newData),
+      })
+      
+      if (!response.ok) {
+        console.log('Response not ok');
+        setIsShowSnackbar({message:"Failed to add new expense", severity:'error' , open:true});
+        return;
+      }
+
+      setIsShowSnackbar({message:"Successfully added new expense", severity:'success' , open:true});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expensesData'] });
+      queryClient.invalidateQueries({ queryKey: ['expenseTotal'] });
+    },
+  })
+
+  const deleteExpenseMutatation = useMutation({
+    mutationFn: async (id: number) => {
+      const response = await fetch(`http://localhost:3001/expense/${id}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) {
+        console.log('Response not ok');
+        setIsShowSnackbar({message:"Failed to delete expense", severity:'error' , open:true});
+        return;
+      }
+
+      setIsShowSnackbar({message:"Successfully deleted expense", severity:'success' , open:true});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expensesData'] });
+      queryClient.invalidateQueries({ queryKey: ['expenseTotal'] });
+    }
+  })  
+
+  const handleNewExpenseSubmit = () => {
+       if (newName === '' || newAmount === 0) {
+        setIsShowAddNewError(true);
+        return;
+       }
+       
+       newExpenseMutation.mutate({
+        name: newName,
+        amount: newAmount
+       })
+
+       setIsOpenAddNew(false);
+       setIsShowAddNewError(false);
+       setNewName('');
+       setNewAmount(0);
+  }
+
+  const handleAddNewClose = () => {
+    setIsOpenAddNew(false);
+    setIsShowAddNewError(false);
+  }
+
+  const handleSnackbarClose = () => {
+    setIsShowSnackbar({message: '', severity: 'success', open: false});
+  }
+
+  const handleExpenseItemMenuClick = (event: MouseEvent<HTMLElement>, id: number) => {
+    setExpenseMenuAnchorEl(event.currentTarget);
+    setSelectedId(id);
+  }
+
+  const handleExpenseMenuClose = () => {
+    setExpenseMenuAnchorEl(null);
+  }
+
+  const handleOpenDeleteDialog = () => {
+    setIsShowDeleteDialog(true);
+  }
+
+  const handleDeleteDialogClose = () => {
+    setIsShowDeleteDialog(false);
+  }
+
+  const handleExpenseDelete = (id: number) => {
+    deleteExpenseMutatation.mutate(id);
+    setExpenseMenuAnchorEl(null);
+    setIsShowDeleteDialog(false);
+  }
+
+  return (
+    <div className="flex flex-col items-center justify-center h-full w-full gap-3">      
+      <div className="flex justify-end min-w-[30%]">
+        <AddCircleRoundedIcon className='text-green-500 cursor-pointer' onClick={() => setIsOpenAddNew(true)} />
+      </div>
+      <div className="flex flex-col bg-neutral-100 min-w-[30%] max-h-[80%] px-3 py-3 gap-2 rounded-md shadow-lg overflow-auto">
+        {expenseList.isPending && <p>Loading...</p>}
+        {expenseList.error && <p>There was an error fetching the data.</p>}
+        {expenseList.data?.length < 1 && <p>You have no expenses.</p>}
+        {expenseList.data && expenseList.data.map((expense: ExpenseData) => (
+          <ExpenseItem key={expense.id} data={expense} menuClick={handleExpenseItemMenuClick} />         
+        ))}
+      </div>
+      <Menu id="action-menu" anchorEl={expenseMenuAnchorEl} open={isOpenExpenseMenu} onClose={handleExpenseMenuClose}>
+        <MenuItem onClick={handleExpenseMenuClose}>Edit</MenuItem>
+        <MenuItem onClick={handleOpenDeleteDialog}>Delete</MenuItem>
+      </Menu>
+      <div className="flex justify-end gap-10 min-w-[30%]">
+        <h1 className='text-xl'>Total expenses</h1>
+        <h1 className='font-bold text-xl'>RM {expenseTotal.data ? (expenseTotal.data).toFixed(2) : 0}</h1>
+      </div>
+      <Modal open={isOpenAddNew} onClose={() => setIsOpenAddNew(false)}>
+        <div className='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-neutral-100 p-5 rounded-md w-[30%] flex flex-col gap-5'>
+          <h1 className='text-2xl'>Add new expense</h1>
+          <div className='flex flex-col'>
+            {isShowAddNewError && 
+              <Alert severity='error'>
+                Please fill in all the fields
+              </Alert>
+            }
+            <div className='flex gap-3'>
+              <TextField label='Name' variant='standard' className='grow' onChange={(e) => setNewName(e.target.value)} />
+              <TextField label='Amount' type='number' variant='standard' className='grow' onChange={(e) => setNewAmount(Number(e.target.value))} />   
+            </div>             
+          </div>
+          <div className='flex justify-end gap-3'>
+            <button className='text-green-700 font-semibold border-2 border-green-700 px-3 py-2 rounded-md' onClick={handleNewExpenseSubmit}>Submit</button>
+            <button className='text-red-700 font-semibold border-2 border-red-700 px-3 py-2 rounded-md' onClick={handleAddNewClose}>Cancel</button>   
+          </div>                   
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      </Modal>
+      <Snackbar open={isShowSnackbar.open} onClose={handleSnackbarClose} autoHideDuration={3000}>
+        <Alert onClose={handleSnackbarClose} severity={isShowSnackbar.severity} sx={{ width: '100%' }}>{isShowSnackbar.message}</Alert>
+      </Snackbar>
+      <Dialog open={isShowDeleteDialog} onClose={handleDeleteDialogClose}>
+        <DialogTitle>
+          Are you sure you want to delete this expense?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            This action cannot be undone.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleDeleteDialogClose}>Cancel</Button>
+          <Button onClick={() => handleExpenseDelete(selectedId)}>Delete</Button>
+        </DialogActions>
+      </Dialog>
     </div>
   );
 }

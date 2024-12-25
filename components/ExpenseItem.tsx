@@ -1,7 +1,7 @@
 import MoreVertRoundedIcon from '@mui/icons-material/MoreVertRounded';
 import { MouseEvent } from 'react';
 
-interface Expense {
+export interface Expense {
     id: number,
     name: string,
     amount: number,
@@ -11,7 +11,7 @@ interface Expense {
 
 interface ExpenseItemProps {
     data: Expense,
-    menuClick: (event: MouseEvent<HTMLElement>, id: number) => void
+    menuClick: (event: MouseEvent<HTMLElement>, data: Expense) => void
 }
 
 export default function ExpenseItem(props: ExpenseItemProps) {
@@ -21,7 +21,7 @@ export default function ExpenseItem(props: ExpenseItemProps) {
                 <h1>{props.data.name}</h1>
                 <h1 className='font-bold'>RM {props.data.amount.toFixed(2)}</h1>
             </div>
-            <div className='text-neutral-500 cursor-pointer' onClick={(e) =>props.menuClick(e, props.data.id)}>
+            <div className='text-neutral-500 cursor-pointer' onClick={(e) =>props.menuClick(e, props.data)}>
                 <MoreVertRoundedIcon />    
             </div>            
         </div>

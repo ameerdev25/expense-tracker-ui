@@ -1,6 +1,6 @@
 "use client";
 
-import ExpenseItem from '@/components/ExpenseItem';
+import ExpenseItem, { Expense } from '@/components/ExpenseItem';
 import AddCircleRoundedIcon from '@mui/icons-material/AddCircleRounded';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, Menu, MenuItem, Modal, Snackbar, TextField } from '@mui/material';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -22,12 +22,14 @@ interface SnackbarNotification {
 
 export default function Home() {
   const [isOpenAddNew, setIsOpenAddNew] = useState(false);
+  const [isOpenEditModal, setIsOpenEditModal] = useState(false);
   const [newName, setNewName] = useState<string>('');
   const [newAmount, setNewAmount] = useState<number>(0);
   const [isShowAddNewError, setIsShowAddNewError] = useState(false);
+  const [isShowEditError, setIsShowEditError] = useState(false);
   const [isShowSnackbar, setIsShowSnackbar] = useState<SnackbarNotification>({message: '', severity: 'success', open: false});
   const [expenseMenuAnchorEl, setExpenseMenuAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedId, setSelectedId] = useState<number>(0);
+  const [selectedData, setSelectedData] = useState<Expense | null>(null);
   const [isShowDeleteDialog, setIsShowDeleteDialog] = useState(false);
   const isOpenExpenseMenu = Boolean(expenseMenuAnchorEl);
 
@@ -54,6 +56,31 @@ export default function Home() {
       }
 
       setIsShowSnackbar({message:"Successfully added new expense", severity:'success' , open:true});
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['expensesData'] });
+      queryClient.invalidateQueries({ queryKey: ['expenseTotal'] });
+    },
+  })
+
+  const updateExpenseMutation = useMutation({
+    mutationFn: async (newData: { id:number, name: string, amount: number }) => {
+      const response = await fetch(`http://localhost:3001/expense/${newData.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(newData),
+      })
+      
+      if (!response.ok) {
+        console.log('Response not ok');
+        setIsShowSnackbar({message:"Failed to update expense", severity:'error' , open:true});
+        return;
+      }
+
+      setIsShowSnackbar({message:"Successfully updated expense", severity:'success' , open:true});
       return response.json();
     },
     onSuccess: () => {
@@ -99,22 +126,59 @@ export default function Home() {
        setNewAmount(0);
   }
 
+  const handleEditExpenseSubmit = () => {
+    if (newName === '' && newAmount === 0) {
+      setIsShowEditError(true);
+      return;
+     }
+     
+     if (selectedData) {
+      updateExpenseMutation.mutate({
+        id: selectedData.id,
+        name: newName,
+        amount: newAmount
+      })  
+     } else {
+      console.log("Unable to retrieve selected data.")
+     }     
+
+     setIsOpenEditModal(false);
+     setIsShowEditError(false);
+     setExpenseMenuAnchorEl(null)
+     setNewName('');
+     setNewAmount(0);
+  }
+
   const handleAddNewClose = () => {
     setIsOpenAddNew(false);
     setIsShowAddNewError(false);
+  }
+
+  const handleEditModalClose = () => {
+    setIsOpenEditModal(false);
+    setIsShowEditError(false);
   }
 
   const handleSnackbarClose = () => {
     setIsShowSnackbar({message: '', severity: 'success', open: false});
   }
 
-  const handleExpenseItemMenuClick = (event: MouseEvent<HTMLElement>, id: number) => {
+  const handleExpenseItemMenuClick = (event: MouseEvent<HTMLElement>, data: Expense) => {
     setExpenseMenuAnchorEl(event.currentTarget);
-    setSelectedId(id);
+    setSelectedData(data);
   }
 
   const handleExpenseMenuClose = () => {
     setExpenseMenuAnchorEl(null);
+  }
+
+  const handleOpenEditModal = () => {
+    setIsOpenEditModal(true)
+
+    if(selectedData) {
+      setNewName(selectedData?.name);
+      setNewAmount(selectedData?.amount);
+    }    
   }
 
   const handleOpenDeleteDialog = () => {
@@ -145,7 +209,7 @@ export default function Home() {
         ))}
       </div>
       <Menu id="action-menu" anchorEl={expenseMenuAnchorEl} open={isOpenExpenseMenu} onClose={handleExpenseMenuClose}>
-        <MenuItem onClick={handleExpenseMenuClose}>Edit</MenuItem>
+        <MenuItem onClick={handleOpenEditModal}>Edit</MenuItem>
         <MenuItem onClick={handleOpenDeleteDialog}>Delete</MenuItem>
       </Menu>
       <div className="flex justify-end gap-10 min-w-[30%]">
@@ -172,6 +236,26 @@ export default function Home() {
           </div>                   
         </div>
       </Modal>
+      <Modal open={isOpenEditModal} onClose={() => setIsOpenEditModal(false)}>
+        <div className='absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-neutral-100 p-5 rounded-md w-[30%] flex flex-col gap-5'>
+          <h1 className='text-2xl'>Edit Expense</h1>
+          <div className='flex flex-col'>
+            {isShowEditError && 
+              <Alert severity='error'>
+                Please fill at least one field.
+              </Alert>
+            }
+            <div className='flex gap-3'>
+              <TextField defaultValue={selectedData?.name} label='Name' variant='standard' className='grow' onChange={(e) => setNewName(e.target.value)} />
+              <TextField defaultValue={selectedData?.amount.toFixed(2)} label='Amount' type='number' variant='standard' className='grow' onChange={(e) => setNewAmount(Number(e.target.value))} />   
+            </div>             
+          </div>
+          <div className='flex justify-end gap-3'>
+            <button className='text-green-700 font-semibold border-2 border-green-700 px-3 py-2 rounded-md' onClick={handleEditExpenseSubmit}>Submit</button>
+            <button className='text-red-700 font-semibold border-2 border-red-700 px-3 py-2 rounded-md' onClick={handleEditModalClose}>Cancel</button>   
+          </div>                   
+        </div>
+      </Modal>
       <Snackbar open={isShowSnackbar.open} onClose={handleSnackbarClose} autoHideDuration={3000}>
         <Alert onClose={handleSnackbarClose} severity={isShowSnackbar.severity} sx={{ width: '100%' }}>{isShowSnackbar.message}</Alert>
       </Snackbar>
@@ -186,7 +270,9 @@ export default function Home() {
         </DialogContent>
         <DialogActions>
           <Button onClick={handleDeleteDialogClose}>Cancel</Button>
-          <Button onClick={() => handleExpenseDelete(selectedId)}>Delete</Button>
+          {
+            selectedData && <Button onClick={() => handleExpenseDelete(selectedData.id)}>Delete</Button>
+          }          
         </DialogActions>
       </Dialog>
     </div>
